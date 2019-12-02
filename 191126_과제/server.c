@@ -13,7 +13,10 @@
 void* doChat(void*);
 int pushClient(int);
 int popClient(int);
-int findNickname(char*);
+void sendMessage(char*, int);
+void whisper(char*);
+void join(char*, int);
+int isEscape(char*, int);
 
 const char* ESCAPE = "exit";
 const char* GREETING = "Welcome to chatting room\n";
@@ -23,6 +26,8 @@ pthread_t thread;
 pthread_mutex_t mutex;
 
 int client[MAX_CLIENT];
+char nickname[MAX_CLIENT][20];
+char room[MAX_CLIENT][20];
 
 int main(int argc, char* argv[])
 {
@@ -30,6 +35,8 @@ int main(int argc, char* argv[])
 	struct sockaddr_in s_addr, c_addr;
 	int len, i, res, errno;
 
+	memset(nickname, 0, MAX_CLIENT * 20);
+	memset(room, 0, MAX_CLIENT * 20);
 	memset(client, 0, sizeof(client));
 	if (pthread_mutex_init(&mutex, NULL) != 0)
 	{
@@ -79,7 +86,6 @@ int main(int argc, char* argv[])
 int pushClient(int c_socket)
 {
 	int i;
-	printf("pushClient!!\n");
 	for (i = 0; i < MAX_CLIENT; i++)
 	{
 		if (client[i] == -1)
@@ -114,33 +120,67 @@ void* doChat(void* arg)
 {
 	int c_socket = *((int *)arg);
 	char chatData[CHATDATA];
-	int i, n;
+	int n, client_idx;
+
+	for (client_idx = 0; client_idx < MAX_CLIENT; ++client_idx)
+	{
+		if (client[client_idx] == c_socket) break;
+	}
+
+	read(c_socket, chatData, sizeof(chatData));
+	strcpy(nickname[client_idx], chatData);
+	printf("Connect : %s\n", nickname[client_idx]);
 
 	while (1) 
 	{
 		memset(chatData, 0, sizeof(chatData));
 		if ((n = read(c_socket, chatData, sizeof(chatData))) > 0)
 		{
-
-			sendGlobalMessage(chatData, strlen(chatData));
-			if (isExit(chatData, c_socket)) break;	
+			if (isEscape(chatData, client_idx)) break;
+			else if (!strncmp(chatData, "/w", 2)) whisper(chatData + 3);
+			else if (!strncmp(chatData, "/j", 2)) join(chatData + 3, client_idx);
+			else sendMessage(chatData, client_idx);
 		}
 	}
 }
 
-void sendGlobalMessage(char* message, int len)
+void whisper(char* chatData)
 {
+	char *nick, *message;
 	int i;
+	nick = strtok(chatData, " ");
+	message = strtok(NULL, "");
 	for (i = 0; i < MAX_CLIENT; ++i)
 	{
-		if (client[i] != 0)
+		if (!strcmp(nickname[i], nick))
 		{
-			write(client[i], message, len + 1);
+			write(client[i], message, strlen(message) + 1);
+			break;
 		}
 	}
 }
 
-int isExit(char* message, int s_socket)
+void join(char* roomName, int client_idx)
+{
+	char sndBuf[CHATDATA];
+	strcpy(room[client_idx], roomName);
+	sprintf(sndBuf, "Join to %s", roomName);
+	write(client[client_idx], sndBuf, strlen(sndBuf) + 1);
+}
+
+void sendMessage(char* message, int client_idx)
+{
+	int i;
+
+	for (i = 0; i < MAX_CLIENT; ++i)
+	{
+		if (client[i] == -1 || client[i] == client[client_idx]) continue;
+		if (room[client_idx][0] != '0' && strcmp(room[i], room[client_idx])) continue;		
+		write(client[i], message, strlen(message) + 1);
+	}
+}
+
+int isEscape(char* message, int s_socket)
 {
 	if (!strcmp(message, ESCAPE)) 
 	{	

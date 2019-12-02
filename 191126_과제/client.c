@@ -14,6 +14,7 @@
 
 void* doSendChat(void*);
 void* doReceiveChat(void*);
+void whisper(char*, char*);
 
 const char* ESCAPE = "exit";
 
@@ -39,6 +40,7 @@ int main(int argc, char* argv[])
 		printf("Can not connect\n");
 		return -1;
 	}
+	write(c_socket, nickname, strlen(nickname) + 1);
 	status1 =pthread_create(&thread1, NULL, doSendChat, (void*)&c_socket);
 	status2 =pthread_create(&thread2, NULL, doReceiveChat, (void*)&c_socket);
 	pthread_join(thread1, (void**)&status1);
@@ -48,7 +50,7 @@ int main(int argc, char* argv[])
 
 void* doSendChat(void* arg)
 {
-	char chatData[CHATDATA + 23];
+	char chatData[CHATDATA];
 	char buf[CHATDATA];
 	int n, c_socket = *((int*)arg);
 	
@@ -57,15 +59,28 @@ void* doSendChat(void* arg)
 		memset(buf, 0, sizeof(buf));
 		if ((n = read(0, buf, sizeof(buf))) > 0)
 		{
-			sprintf(chatData, "[%s] %s", nickname, buf);
-			write(c_socket, chatData, strlen(chatData));
 			if (!strncmp(buf, ESCAPE, strlen(ESCAPE)))
 			{
-				pthread_kill(thread2, SIGINT);	
+				pthread_kill(thread2, SIGINT);
 				break;
 			}
+			else if (!strncmp(buf, "/w", 2)) whisper(buf + 3, chatData);
+			else if (!strncmp(buf, "/j", 2)) strcpy(chatData, buf);
+			else sprintf(chatData, "[%s] %s", nickname, buf);
+			write(c_socket, chatData, strlen(chatData));
 		}
 	} 
+}
+
+
+void whisper(char* buf, char* sndBuf)
+{
+	char *name, *message;
+
+	name = strtok(buf, " ");
+	message = strtok(NULL, "");
+
+	sprintf(sndBuf, "/w %s [%s] %s", name, nickname, message);
 }
 
 void* doReceiveChat(void* arg)
@@ -83,10 +98,6 @@ void* doReceiveChat(void* arg)
 	}
 }
 
-void sendNickname(int c_socket)
-{
-	write(c_socket, nickname, strlen(nickname) + 1);
-}
 
 
 
